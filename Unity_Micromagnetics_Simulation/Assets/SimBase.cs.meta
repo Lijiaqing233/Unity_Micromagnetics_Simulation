@@ -1,0 +1,13 @@
+fileFormatVersion: 2
+guid: 06576f6667411ae4aa0af16a85d9ef0b
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - myvector: {fileID: -7395140314636064541, guid: ba3e8cd0858d4d04d90345618a2fa504,
+      type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

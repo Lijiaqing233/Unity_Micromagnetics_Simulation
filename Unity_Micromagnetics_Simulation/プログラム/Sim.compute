@@ -1,0 +1,278 @@
+﻿#pragma kernel CSMain
+
+struct Particle
+{
+    float qxx, qyy, qzz, qxy, qxz, qyz;
+    float li, lj, lk;
+    float3 vec, b, v, K1, K2, K3, K4, position;
+};
+
+
+struct Parameter  //8 * 19 = 152
+{
+    int nx, ny, nz, n;
+    float dx, dy, dz;
+          
+    float hxc, hyc, hzc;
+    float tmax, ipr;
+    int ic;
+    float al, dt, ft;
+    float smx, smy, smz;
+
+    //**************//
+    float pi;
+       //ameters
+    float ku, m, aa;
+       //ameter for dynamic cal
+    float gamma;
+};
+
+RWStructuredBuffer<Particle> _ParticleBuffer;
+RWStructuredBuffer<Parameter> _ParameterBuffer;
+
+
+float3 LLG(float3 b, int index);
+float3 Demagn(float3 hd, int index);
+void vadd(float3 v, float3 b, float f, int index);
+float3 vadd4(float3 K1, float3 K2, float3 K3, float3 K4, int index);
+
+
+
+[numthreads(64, 1, 1)]
+void CSMain(int3 id : SV_DispatchThreadID)
+{
+   int index = id.x + 1;
+    //rk4
+  
+  
+    _ParticleBuffer[index].v = _ParticleBuffer[index].vec;
+    
+
+    _ParticleBuffer[index].K1 = LLG(_ParticleBuffer[index].K1, index);
+    vadd(_ParticleBuffer[index].v, _ParticleBuffer[index].K1, 0.5, index);  //
+   
+   //pass2
+    
+    _ParticleBuffer[index].K2 = LLG(_ParticleBuffer[index].K2, index);
+    vadd(_ParticleBuffer[index].v, _ParticleBuffer[index].K2, 0.5, index);
+    
+    //pass3
+ 
+    _ParticleBuffer[index].K3 = LLG(_ParticleBuffer[index].K3, index);
+    vadd(_ParticleBuffer[index].v, _ParticleBuffer[index].K3, 1, index);
+    
+    _ParticleBuffer[index].K4 = LLG(_ParticleBuffer[index].K4, index);
+    _ParticleBuffer[index].K4 = vadd4(_ParticleBuffer[index].K1, _ParticleBuffer[index].K2, _ParticleBuffer[index].K3, _ParticleBuffer[index].K4, index);
+    vadd(_ParticleBuffer[index].v, _ParticleBuffer[index].K4, 1, index);
+    
+    
+}
+
+
+
+
+float3 LLG(float3 b, int index)
+{
+    float3 hd = 0;
+    hd = Demagn(hd, index);
+      
+        
+    float dx2 = 2e0 * _ParameterBuffer[0].aa / _ParameterBuffer[0].m / (_ParameterBuffer[0].dx * _ParameterBuffer[0].dx);
+    float dy2 = 2e0 * _ParameterBuffer[0].aa / _ParameterBuffer[0].m / (_ParameterBuffer[0].dy * _ParameterBuffer[0].dy);
+    float dz2 = 2e0 * _ParameterBuffer[0].aa / _ParameterBuffer[0].m / (_ParameterBuffer[0].dz * _ParameterBuffer[0].dz);
+    float dyn = _ParameterBuffer[0].gamma * _ParameterBuffer[0].dt / (1e0 + _ParameterBuffer[0].al * _ParameterBuffer[0].al);
+       
+    int im, ip;
+    int jm, jp;
+    int km, kp;
+    float dmx, dmy, dmz;
+    float x, y, z;
+    float xxm, xxp, xym, xyp, xzm, xzp;
+    float yxm, yxp, yym, yyp, yzm, yzp;
+    float zxm, zxp, zym, zyp, zzm, zzp;
+    float hxe, hye, hze, hm, tx, ty, tz;
+    int m2 = _ParameterBuffer[0].nx * _ParameterBuffer[0].ny;
+    float hk = 2e0 * _ParameterBuffer[0].ku / _ParameterBuffer[0].m;
+       
+    float i1 = _ParticleBuffer[index].li;
+    float j1 = _ParticleBuffer[index].lj;
+    float k1 = _ParticleBuffer[index].lk;
+     
+            //Find elements around index
+    im = index - 1;
+    ip = index + 1;
+    if (i1 <= 1)
+        im = index;
+    if (i1 >= _ParameterBuffer[0].nx)
+        ip = index;
+     
+    jm = index - _ParameterBuffer[0].nx;
+    jp = index + _ParameterBuffer[0].nx;
+    if (j1 <= 1)
+        jm = index;
+    if (j1 >= _ParameterBuffer[0].ny)
+    {
+        jp = index;
+    }
+     
+    km = index - m2;
+    kp = index + m2;
+    if (k1 <= 1)
+        km = index;
+     
+    if (k1 >= _ParameterBuffer[0].nz)
+        kp = index;
+     
+    x = _ParticleBuffer[index].vec.x;
+    xxm = _ParticleBuffer[im].vec.x; //left
+    xxp = _ParticleBuffer[ip].vec.x; //right
+    xym = _ParticleBuffer[jm].vec.x; //Behind
+    xyp = _ParticleBuffer[jp].vec.x; //front
+    xzm = _ParticleBuffer[km].vec.x; //below
+    xzp = _ParticleBuffer[kp].vec.x; //upside
+    y = _ParticleBuffer[index].vec.y;
+    yxm = _ParticleBuffer[im].vec.y;
+    yxp = _ParticleBuffer[ip].vec.y;
+    yym = _ParticleBuffer[jm].vec.y;
+    yyp = _ParticleBuffer[jp].vec.y;
+    yzm = _ParticleBuffer[km].vec.y;
+    yzp = _ParticleBuffer[kp].vec.y;
+    z = _ParticleBuffer[index].vec.z;
+    zxm = _ParticleBuffer[im].vec.z;
+    zxp = _ParticleBuffer[ip].vec.z;
+    zym = _ParticleBuffer[jm].vec.z;
+    zyp = _ParticleBuffer[jp].vec.z;
+    zzm = _ParticleBuffer[km].vec.z;
+    zzp = _ParticleBuffer[kp].vec.z;
+                               
+    dmx = (xxp - 2e0 * x + xxm) * dx2
+                 + (xyp - 2e0 * x + xym) * dy2
+                 + (xzp - 2e0 * x + xzm) * dz2;
+    dmy = (yxp - 2e0 * y + yxm) * dx2
+                 + (yyp - 2e0 * y + yym) * dy2
+                 + (yzp - 2e0 * y + yzm) * dz2;
+    dmz = (zxp - 2e0 * z + zxm) * dx2
+                 + (zyp - 2e0 * z + zym) * dy2
+                 + (zzp - 2e0 * z + zzm) * dz2;
+           
+    hxe = dmx + hd.x + _ParameterBuffer[0].hxc;
+    hye = dmy + hd.y + _ParameterBuffer[0].hyc;
+    hze = dmz + hd.z + _ParameterBuffer[0].hzc + hk * z;
+    hm = x * hxe + y * hye + z * hze;
+    tx = y * hze - z * hye;
+    ty = z * hxe - x * hze;
+    tz = x * hye - y * hxe;
+            
+    b.x = (-tx - _ParameterBuffer[0].al * (x * hm - hxe)) * dyn;
+    b.y = (-ty - _ParameterBuffer[0].al * (y * hm - hye)) * dyn;
+    b.z = (-tz - _ParameterBuffer[0].al * (z * hm - hze)) * dyn;
+    
+        
+    return b;
+}
+
+
+float3 Demagn(float3 hd, int index)   //Calculate the loss due to static magnetic field  
+{
+    int ip;
+    float id, jd, kd;
+    float i, j, k;
+    float x, y, z;
+    float sij = 0;
+    float sik = 0;
+    float sjk = 0;
+    //Magnetic field loss
+    int n = _ParameterBuffer[0].nx * _ParameterBuffer[0].ny * _ParameterBuffer[0].nz;
+
+    hd.x = 0;
+    hd.y = 0;
+    hd.y = 0;
+
+    i = _ParticleBuffer[index].li;
+    j = _ParticleBuffer[index].lj;
+    k = _ParticleBuffer[index].lk;
+
+
+
+
+    for (int ii = 1; ii < n + 1; ii++)
+    {
+        id = _ParticleBuffer[ii].li; //
+        jd = _ParticleBuffer[ii].lj;
+        kd = _ParticleBuffer[ii].lk;
+
+        x = _ParticleBuffer[ii].vec.x;
+        y = _ParticleBuffer[ii].vec.y;
+        z = _ParticleBuffer[ii].vec.z;
+
+
+
+        float Ks = 0;
+        float Js = 0;
+        float Is = 0;
+
+        if ((kd - k) < 0)
+        {
+            Ks = -1;
+        }
+        else
+        {
+            Ks = 1;
+        }
+        if ((jd - j) < 0)
+        {
+            Js = -1;
+        }
+        else
+        {
+            Js = 1;
+        }
+        if ((id - i) < 0)
+        {
+            Is = -1;
+        }
+        else
+        {
+            Is = 1;
+        }
+
+        ip = (uint) ((abs(kd - k) * _ParameterBuffer[0].ny + abs(jd - j)) *
+            _ParameterBuffer[0].nx + abs(id - i)) + 1;
+
+        sij = Is * Js * _ParticleBuffer[ip].qxy;
+        sik = Is * Ks * _ParticleBuffer[ip].qxz;
+        sjk = Js * Ks * _ParticleBuffer[ip].qyz;
+
+        hd.x += _ParticleBuffer[ip].qxx * x + sij * y + sik * z;
+        hd.y += sij * x + _ParticleBuffer[ip].qyy * y + sjk * z;
+        hd.z += sik * x + sjk * y + _ParticleBuffer[ip].qzz * z;
+
+
+    }
+    return hd;
+}
+
+void vadd(float3 v, float3 b, float f, int index)
+{
+    //Add two vectors
+    _ParticleBuffer[index].vec.x = v.x + f * b.x;
+    _ParticleBuffer[index].vec.y = v.y + f * b.y;
+    _ParticleBuffer[index].vec.z = v.z + f * b.z;
+    //Normalization
+    float vl = sqrt(_ParticleBuffer[index].vec.x * _ParticleBuffer[index].vec.x + _ParticleBuffer[index].vec.y 
+    * _ParticleBuffer[index].vec.y + _ParticleBuffer[index].vec.z * _ParticleBuffer[index].vec.z);
+    if (vl == 0)
+        vl = 1;
+    _ParticleBuffer[index].vec.x = _ParticleBuffer[index].vec.x / vl;
+    _ParticleBuffer[index].vec.y = _ParticleBuffer[index].vec.y / vl;
+    _ParticleBuffer[index].vec.z = _ParticleBuffer[index].vec.z / vl;
+}
+
+
+float3 vadd4(float3 K1, float3 K2, float3 K3, float3 K4, int index)
+{ //Add four vectors
+    K4.x = (K1.x + 2e0 * K2.x + 2e0 * K3.x + K4.x) / 6e0;
+    K4.y = (K1.y + 2e0 * K2.y + 2e0 * K3.y + K4.y) / 6e0;
+    K4.z = (K1.z + 2e0 * K2.z + 2e0 * K3.z + K4.z) / 6e0;
+    return K4;
+}
